@@ -27,12 +27,21 @@ WORKDIR /app
 # Copy repository
 COPY . /app
 
+# Configure pip to also use the public PyPI (causes no issues if unused)
+RUN pip config set --site global.extra-index-url https://pypi.org/simple
+
+# Optional: install internal packages (e.g., threevictors) from a private index using a build secret token
+ARG CA_URL
+RUN --mount=type=secret,id=ca_token \\
+    pip install --no-cache-dir --index-url "https://aws:$(cat /run/secrets/ca_token)@${CA_URL#https://}" -r /app/ds-threevictors/requirements.txt || true
+
 # Install python dependencies (local editable installs)
 RUN python -m pip install --upgrade pip setuptools wheel \
  && python -m pip install openai-agents \
- && (python -m pip install -e /app/ds-threevictors || python -m pip install threevictors) \
+ && (python -m pip install -e /app/ds-threevictors || true) \
  && python -m pip install -r /app/ds-mcp/requirements.txt \
  && python -m pip install -e /app/ds-mcp
 
 # Default command: start provider chat (override with --agent anomalies)
 CMD ["python", "ds-agents/chat.py", "--agent", "provider"]
+# syntax=docker/dockerfile:1.4
