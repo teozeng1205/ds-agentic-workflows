@@ -31,14 +31,10 @@ COPY . /app
 # Configure pip to also use the public PyPI (causes no issues if unused)
 RUN pip config set --site global.extra-index-url https://pypi.org/simple
 
-# Install private ds-threevictors when build secrets are provided
+# Install private ds-threevictors (required; fails if secret/args missing)
 ARG CA_URL
 RUN --mount=type=secret,id=ca_token \
-    bash -lc 'if [ -n "${CA_URL:-}" ] && [ -f /run/secrets/ca_token ]; then \
-        pip install --no-cache-dir --index-url "https://aws:$(cat /run/secrets/ca_token)@${CA_URL#https://}" ds-threevictors; \
-      else \
-        echo "Skipping ds-threevictors private install (set CA_URL and ca_token secret to enable)"; \
-      fi'
+    pip install --no-cache-dir --index-url "https://aws:$(cat /run/secrets/ca_token)@${CA_URL#https://}" ds-threevictors
 
 # Install python dependencies (local editable installs)
 RUN python -m pip install --upgrade pip setuptools wheel \
