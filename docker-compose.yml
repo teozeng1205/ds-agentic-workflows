@@ -11,9 +11,7 @@ services:
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
       DS_MCP_AWS_SETUP: ${DS_MCP_AWS_SETUP:-0}
     volumes:
-      # Use host AWS credentials/cache for SSO (optional but recommended)
       - ${HOME}/.aws:/root/.aws:rw
-      # Allow overriding env.sh without rebuilding
       - ./env.sh:/app/env.sh:ro
     stdin_open: true
     tty: true

@@ -30,7 +30,7 @@ COPY . /app
 # Install python dependencies (local editable installs)
 RUN python -m pip install --upgrade pip setuptools wheel \
  && python -m pip install openai-agents \
- && python -m pip install -e /app/ds-threevictors \
+ && (python -m pip install -e /app/ds-threevictors || python -m pip install threevictors) \
  && python -m pip install -r /app/ds-mcp/requirements.txt \
  && python -m pip install -e /app/ds-mcp
 
