@@ -1,0 +1,35 @@
+services:
+  chat-provider:
+    build: .
+    container_name: ds-agents-chat-provider
+    working_dir: /app
+    command: ["python", "ds-agents/chat.py", "--agent", "provider"]
+    environment:
+      # Provide at least OPENAI_API_KEY; AWS envs are optional if using profiles
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      AWS_PROFILE: ${AWS_PROFILE:-3VDEV}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      DS_MCP_AWS_SETUP: ${DS_MCP_AWS_SETUP:-0}
+    volumes:
+      # Use host AWS credentials/cache for SSO (optional but recommended)
+      - ${HOME}/.aws:/root/.aws:rw
+      # Allow overriding env.sh without rebuilding
+      - ./env.sh:/app/env.sh:ro
+    stdin_open: true
+    tty: true
+
+  chat-anomalies:
+    build: .
+    container_name: ds-agents-chat-anomalies
+    working_dir: /app
+    command: ["python", "ds-agents/chat.py", "--agent", "anomalies"]
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      AWS_PROFILE: ${AWS_PROFILE:-3VDEV}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      DS_MCP_AWS_SETUP: ${DS_MCP_AWS_SETUP:-0}
+    volumes:
+      - ${HOME}/.aws:/root/.aws:rw
+      - ./env.sh:/app/env.sh:ro
+    stdin_open: true
+    tty: true
