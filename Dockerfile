@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-FROM python:3.11-slim
+FROM --platform=linux/arm64 python:3.12
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -31,14 +31,18 @@ COPY . /app
 # Configure pip to also use the public PyPI (causes no issues if unused)
 RUN pip config set --site global.extra-index-url https://pypi.org/simple
 
-# Optional: internal packages (e.g., threevictors) are skipped unless configured
+# Install private ds-threevictors when build secrets are provided
 ARG CA_URL
-RUN echo "Skipping private ds-threevictors install (set CA_URL + secret to enable)"
+RUN --mount=type=secret,id=ca_token \
+    bash -lc 'if [ -n "${CA_URL:-}" ] && [ -f /run/secrets/ca_token ]; then \
+        pip install --no-cache-dir --index-url "https://aws:$(cat /run/secrets/ca_token)@${CA_URL#https://}" ds-threevictors; \
+      else \
+        echo "Skipping ds-threevictors private install (set CA_URL and ca_token secret to enable)"; \
+      fi'
 
 # Install python dependencies (local editable installs)
 RUN python -m pip install --upgrade pip setuptools wheel \
  && python -m pip install openai-agents \
- && (python -m pip install -e /app/ds-threevictors || true) \
  && python -m pip install -r /app/ds-mcp/requirements.txt \
  && python -m pip install -e /app/ds-mcp \
  && python -m pip install -e /app/ds-agents
