@@ -1,6 +1,12 @@
 services:
   chat-provider:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        CA_URL: ${CA_URL}
+      secrets:
+        - ca_token
     container_name: ds-agents-chat-provider
     working_dir: /app
     command: ["python", "ds-agents/chat.py", "--agent", "provider"]
@@ -17,7 +23,13 @@ services:
     tty: true
 
   chat-anomalies:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        CA_URL: ${CA_URL}
+      secrets:
+        - ca_token
     container_name: ds-agents-chat-anomalies
     working_dir: /app
     command: ["python", "ds-agents/chat.py", "--agent", "anomalies"]
@@ -31,3 +43,8 @@ services:
       - ./env.sh:/app/env.sh:ro
     stdin_open: true
     tty: true
+
+secrets:
+  ca_token:
+    # Read token from environment CA_TOKEN at build time
+    environment: CA_TOKEN
