@@ -20,12 +20,27 @@ Type '/exit' to quit.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
+import os
 import sys
 import time
 from collections import Counter
-import argparse
 from pathlib import Path
+
+# Ensure local submodules are importable without pip installs
+REPO_ROOT = Path(__file__).resolve().parent
+LOCAL_IMPORT_PATHS = [
+    REPO_ROOT / "ds-agents",
+    REPO_ROOT / "ds-mcp" / "src",
+]
+LOCAL_IMPORT_PATH_STRS = []
+for _path in LOCAL_IMPORT_PATHS:
+    if _path.exists():
+        _str_path = str(_path)
+        LOCAL_IMPORT_PATH_STRS.append(_str_path)
+        if _str_path not in sys.path:
+            sys.path.insert(0, _str_path)
 
 from agents import Runner
 from agents.mcp import MCPServerStdio, create_static_tool_filter
@@ -56,8 +71,13 @@ async def chat(agent_kind: str) -> int:
     server_name = agent_oop.get_server_name()
 
     print(f"Starting MCP server for {agent_kind} …", file=sys.stderr)
-    # Ensure the MCP server uses the same Python interpreter as this process
-    server_env = {}
+    # Ensure the MCP server uses the same Python interpreter and env as this process
+    server_env = os.environ.copy()
+    pythonpath_entries = list(LOCAL_IMPORT_PATH_STRS)
+    if existing := server_env.get("PYTHONPATH"):
+        pythonpath_entries.append(existing)
+    if pythonpath_entries:
+        server_env["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
 
     async with MCPServerStdio(
         name=server_name,
