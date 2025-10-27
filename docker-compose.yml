@@ -1,5 +1,5 @@
 services:
-  chat-provider:
+  chat:
     build:
       context: .
       dockerfile: Dockerfile
@@ -7,37 +7,14 @@ services:
         CA_URL: ${CA_URL}
       secrets:
         - ca_token
-    container_name: ds-agents-chat-provider
+    container_name: ds-agents-chat
     working_dir: /app
-    command: ["python", "chat.py", "--agent", "provider"]
-    environment:
-      # Provide at least OPENAI_API_KEY; AWS envs are optional if using profiles
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      AWS_PROFILE: ${AWS_PROFILE:-3VDEV}
-      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
-      DS_MCP_AWS_SETUP: ${DS_MCP_AWS_SETUP:-0}
-    volumes:
-      - ${HOME}/.aws:/root/.aws:rw
-      - ./env.sh:/app/env.sh:ro
-    stdin_open: true
-    tty: true
-
-  chat-anomalies:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        CA_URL: ${CA_URL}
-      secrets:
-        - ca_token
-    container_name: ds-agents-chat-anomalies
-    working_dir: /app
-    command: ["python", "chat.py", "--agent", "anomalies"]
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       AWS_PROFILE: ${AWS_PROFILE:-3VDEV}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
       DS_MCP_AWS_SETUP: ${DS_MCP_AWS_SETUP:-0}
+    command: python chat.py --agent ${CHAT_AGENT:-provider}
     volumes:
       - ${HOME}/.aws:/root/.aws:rw
       - ./env.sh:/app/env.sh:ro
@@ -46,5 +23,4 @@ services:
 
 secrets:
   ca_token:
-    # Read token from environment CA_TOKEN at build time
     environment: CA_TOKEN

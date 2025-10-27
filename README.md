@@ -13,6 +13,11 @@ Quick start
   - Provider: `python chat.py --agent provider`
   - Anomalies: `python chat.py --agent anomalies`
 
+Docker
+- Build once: `docker compose build`
+- Provider chat: `OPENAI_API_KEY=sk-... docker compose run --rm chat`
+- Other agent: `OPENAI_API_KEY=sk-... CHAT_AGENT=anomalies docker compose run --rm chat`
+
 Notes
 - `chat.py` is at the repo root and loads agent definitions from `ds-agents/agents/`.
 - Python import names use underscores: `from ds_agents import ...` and `from ds_mcp import ...`.

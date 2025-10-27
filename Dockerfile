@@ -1,47 +1,29 @@
-# syntax=docker/dockerfile:1.4
-FROM --platform=linux/arm64 python:3.12
+FROM --platform=linux/arm64 python:3.13
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
-# Install system deps and AWS CLI v2
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    unzip \
-    bash \
- && rm -rf /var/lib/apt/lists/*
-
-# Install AWS CLI v2 (used by MCP wrappers for SSO), architecture-aware
-RUN ARCH=$(uname -m) \
- && if [ "$ARCH" = "x86_64" ] || [ "$ARCH" = "amd64" ]; then CLI_URL="https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"; \
-    elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then CLI_URL="https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip"; \
-    else CLI_URL="https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"; fi \
- && curl -sSL "$CLI_URL" -o "/tmp/awscliv2.zip" \
- && unzip -q /tmp/awscliv2.zip -d /tmp \
- && /tmp/aws/install \
- && rm -rf /tmp/aws /tmp/awscliv2.zip
-
 WORKDIR /app
 
-# Copy repository
-COPY . /app
+# Copy minimal requirements for private packages
+COPY resources/requirements.txt /tmp/private-requirements.txt
 
 # Configure pip to also use the public PyPI (causes no issues if unused)
 RUN pip config set --site global.extra-index-url https://pypi.org/simple
 
-# Install private ds-threevictors (required; fails if secret/args missing)
+# Install private dependencies (ds-threevictors) via internal index
 ARG CA_URL
 RUN --mount=type=secret,id=ca_token \
-    pip install --no-cache-dir --index-url "https://aws:$(cat /run/secrets/ca_token)@${CA_URL#https://}" ds-threevictors
+    pip install --no-cache-dir --index-url "https://aws:$(cat /run/secrets/ca_token)@${CA_URL#https://}" -r /tmp/private-requirements.txt
 
-# Install python dependencies (local editable installs)
+# Copy remaining project files
+COPY . /app
+
+# Install public dependencies and local packages
 RUN python -m pip install --upgrade pip setuptools wheel \
- && python -m pip install openai-agents \
- && python -m pip install -r /app/ds-mcp/requirements.txt \
- && python -m pip install -e /app/ds-mcp \
- && python -m pip install -e /app/ds-agents
+ && python -m pip install --no-cache-dir openai-agents \
+ && python -m pip install --no-cache-dir -r ds-mcp/requirements.txt \
+ && python -m pip install --no-cache-dir -e ds-mcp -e ds-agents
 
-# Default command: start provider chat (override with --agent anomalies)
-CMD ["python", "chat.py", "--agent", "provider"]
+ENTRYPOINT ["python", "chat.py"]
