@@ -24,6 +24,6 @@ COPY . /app
 RUN python -m pip install --upgrade pip setuptools wheel \
  && python -m pip install --no-cache-dir openai-agents \
  && python -m pip install --no-cache-dir -r ds-mcp/requirements.txt \
- && python -m pip install --no-cache-dir -e ds-mcp -e ds-agents
+ && python -m pip install --no-cache-dir -e ds-mcp -e ds_agents
 
 ENTRYPOINT ["python", "chat.py"]

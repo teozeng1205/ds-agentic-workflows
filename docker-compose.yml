@@ -7,7 +7,7 @@ services:
         CA_URL: ${CA_URL}
       secrets:
         - ca_token
-    container_name: ds-agents-chat
+    container_name: ds_agents_chat
     working_dir: /app
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
