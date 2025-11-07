@@ -1,3 +1,6 @@
 [submodule "ds-mcp"]
 	path = ds-mcp
 	url = https://github.com/teozeng1205/ds-mcp
+[submodule "ds-agents"]
+	path = ds-agents
+	url = https://github.com/teozeng1205/ds-agents

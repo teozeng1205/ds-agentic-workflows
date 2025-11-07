@@ -31,7 +31,7 @@ from pathlib import Path
 # Ensure local submodules are importable without pip installs
 REPO_ROOT = Path(__file__).resolve().parent
 LOCAL_IMPORT_PATHS = [
-    REPO_ROOT / "ds_agents",
+    REPO_ROOT / "ds-agents",
     REPO_ROOT / "ds-mcp" / "src",
 ]
 LOCAL_IMPORT_PATH_STRS = []

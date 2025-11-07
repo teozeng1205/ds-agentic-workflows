@@ -19,7 +19,7 @@ Docker
 - Other agent: `OPENAI_API_KEY=sk-... CHAT_AGENT=anomalies docker compose run --rm chat`
 
 Notes
-- `chat.py` is at the repo root and loads agent definitions from `ds_agents/agents/`.
+- `chat.py` is at the repo root and loads agent definitions from `ds-agents/agents/`.
 - Python import names use underscores: `from ds_agents import ...` and `from ds_mcp import ...`.
-- Running `chat.py` from the repo root automatically adds the local `ds_agents` and `ds-mcp/src` paths to `sys.path`, so editable installs (`pip install -e`) are optional.
+- Running `chat.py` from the repo root automatically adds the local `ds-agents` and `ds-mcp/src` paths to `sys.path`, so editable installs (`pip install -e`) are optional.
 - The chat client launches the installed `ds_mcp` server modules directly (no repo paths).
