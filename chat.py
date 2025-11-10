@@ -1,19 +1,11 @@
 #!/usr/bin/env python3
 """
-Interactive chat interface for Provider or Market Anomalies agents.
+Interactive chat interface for DS-MCP tables.
 
-Defaults to SQL macro tools in all cases (query_audit / query_anomalies),
-keeping the tool surface minimal and predictable. You can still call
-get_table_schema for quick schema lookups.
-
-Best practices used:
-- Keep a single MCP stdio server process alive across turns.
-- Manage multi‑turn conversation via RunResult.to_input_list() (manual conversation state).
-- Filter MCP tools to a small, fast set (macro query + schema only by default).
-
-Run:
-  python chat.py --agent provider
-  python chat.py --agent anomalies
+Every table automatically exposes describe_table(), get_table_schema(),
+read_table_head(), and query_table(), plus any bespoke SQL helpers (e.g.,
+provider macros). Use --table to point at any slug or schema.table string and
+pick the agent instructions that fit your workflow.
 
 Type '/exit' to quit.
 """
@@ -27,6 +19,7 @@ import sys
 import time
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 # Ensure local submodules are importable without pip installs
 REPO_ROOT = Path(__file__).resolve().parent
@@ -44,31 +37,68 @@ for _path in LOCAL_IMPORT_PATHS:
 
 from agents import Runner
 from agents.mcp import MCPServerStdio, create_static_tool_filter
-from ds_agents.mcp_agents import ProviderAuditMCPAgent, MarketAnomaliesMCPAgent
+from ds_agents.mcp_agents import (
+    GenericDatabaseMCPAgent,
+    MarketAnomaliesMCPAgent,
+    ProviderAuditMCPAgent,
+)
+from ds_mcp.tables import get_table, list_available_tables
 
 
 AGENT_CLASSES = {
     "provider": ProviderAuditMCPAgent,
     "anomalies": MarketAnomaliesMCPAgent,
+    "generic": GenericDatabaseMCPAgent,
+}
+
+TABLE_PROFILES = {
+    "provider": ["provider"],
+    "anomalies": ["anomalies"],
 }
 
 
-async def chat(agent_kind: str) -> int:
+def _summarize_tables(table_ids: list[str]) -> list[dict[str, Any]]:
+    summaries: list[dict[str, Any]] = []
+    for identifier in table_ids:
+        table = get_table(identifier)
+        summaries.append(
+            {
+                "identifier": identifier,
+                "full_name": table.full_name,
+                "custom_tools": [spec.name for spec in table.custom_tools],
+                "query_aliases": list(table.query_aliases),
+            }
+        )
+    return summaries
+
+
+async def chat(agent_kind: str, tables: list[str], allow_query_table: bool, server_label: str | None = None) -> int:
     # Resolve agent + MCP stdio script + default macro tools
     agent_cls = AGENT_CLASSES.get(agent_kind)
     if not agent_cls:
         raise ValueError(f"Unknown agent kind: {agent_kind}")
 
-    # Determine which ds-mcp server module to run (module entrypoint, not repo script)
-    if agent_kind == "anomalies":
-        server_module = "ds_mcp.servers.market_anomalies_server"
-    else:
-        server_module = "ds_mcp.servers.provider_combined_audit_server"
-
     # Pull defaults from the agent class
     agent_oop = agent_cls()
-    allowed_tools = list(getattr(agent_oop, "allowed_tools", ())) or None
-    server_name = agent_oop.get_server_name()
+    table_summaries = _summarize_tables(tables)
+    print("Configured tables:")
+    for summary in table_summaries:
+        print(f"- {summary['identifier']} → {summary['full_name']}")
+        base = ["describe_table", "get_table_schema", "read_table_head"]
+        print(f"  Base tools: {', '.join(base)}")
+        if summary["custom_tools"]:
+            print(f"  Custom tools: {', '.join(summary['custom_tools'])}")
+        if summary["query_aliases"]:
+            print(f"  Query aliases: {', '.join(summary['query_aliases'])}")
+    print()
+
+    allowed_tools = agent_oop.allowed_tool_names()
+    if not allow_query_table:
+        disallowed = {"query_table"}
+        for summary in table_summaries:
+            disallowed.update(summary["query_aliases"])
+        allowed_tools = [tool for tool in allowed_tools if tool not in disallowed]
+    server_name = server_label or agent_oop.get_server_name()
 
     print(f"Starting MCP server for {agent_kind} …", file=sys.stderr)
     # Ensure the MCP server uses the same Python interpreter and env as this process
@@ -79,10 +109,15 @@ async def chat(agent_kind: str) -> int:
     if pythonpath_entries:
         server_env["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
 
+    server_args = ["-m", "ds_mcp.server"]
+    if server_name:
+        server_args.extend(["--name", server_name])
+    for table in tables:
+        server_args.extend(["--table", table])
+
     async with MCPServerStdio(
         name=server_name,
-        # Launch installed ds-mcp server module directly
-        params={"command": sys.executable, "args": ["-m", server_module], "env": server_env},
+        params={"command": sys.executable, "args": server_args, "env": server_env},
         cache_tools_list=True,
         client_session_timeout_seconds=180.0,
         tool_filter=create_static_tool_filter(allowed_tool_names=allowed_tools),
@@ -151,11 +186,68 @@ async def chat(agent_kind: str) -> int:
     return 0
 
 
+def _prompt_generic_tables() -> list[str]:
+    available = list_available_tables()
+    if not available:
+        print("No tables discovered. Enter at least one identifier (schema.table).")
+    for idx, (slug, display) in enumerate(available, start=1):
+        print(f"[{idx}] {slug} – {display}")
+    print("[A] Add custom table identifier (schema.table or database.schema.table)")
+    print("[ALL] Enable all listed tables")
+    print("Press Enter with no input when done.")
+
+    selections: list[str] = []
+    slug_lookup = {str(i + 1): slug for i, (slug, _) in enumerate(available)}
+
+    while True:
+        choice = input("Select option: ").strip()
+        if not choice:
+            break
+        upper = choice.upper()
+        if upper == "ALL":
+            selections = [slug for slug, _ in available]
+            break
+        if upper == "A":
+            identifier = input("Enter schema.table (or database.schema.table): ").strip()
+            if identifier:
+                selections.append(identifier)
+            continue
+        slug = slug_lookup.get(choice)
+        if slug:
+            selections.append(slug)
+            continue
+        print("Unrecognized option. Try again.")
+
+    if not selections:
+        print("No explicit selection made; defaulting to all discovered tables.")
+        selections = [slug for slug, _ in available]
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in selections:
+        if item not in seen:
+            deduped.append(item)
+            seen.add(item)
+    return deduped
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Interactive chat for provider or anomalies agents (macro-SQL first)")
-    parser.add_argument("--agent", choices=["provider", "anomalies"], default="provider", help="Which agent to chat with")
+    parser = argparse.ArgumentParser(description="Interactive chat for DS-MCP tables (schema/head/query tools built-in)")
+    parser.add_argument("--agent", choices=list(AGENT_CLASSES.keys()), default="provider", help="Which agent instructions to use")
+    parser.add_argument(
+        "--allow-query-table",
+        action="store_true",
+        help="Permit direct query_table()/query_* aliases (off by default)",
+    )
     args = parser.parse_args()
-    return asyncio.run(chat(args.agent))
+
+    if args.agent == "generic":
+        tables = _prompt_generic_tables()
+    else:
+        tables = list(TABLE_PROFILES.get(args.agent, ()))
+        if not tables:
+            parser.error("No tables configured for this agent. Update TABLE_PROFILES in chat.py.")
+
+    return asyncio.run(chat(args.agent, tables, args.allow_query_table))
 
 
 if __name__ == "__main__":

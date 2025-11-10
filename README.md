@@ -10,8 +10,16 @@ Quick start
 - Install the internal ds-threevictors package (required for database access): `pip install -e ds-threevictors` or use your internal package index.
 - Create `env.sh` at repo root with at least: `AWS_PROFILE`, `AWS_DEFAULT_REGION`, `OPENAI_API_KEY` (see `ds-mcp/README.md`)
 - Run chat
-  - Provider: `python chat.py --agent provider`
-  - Anomalies: `python chat.py --agent anomalies`
+  - Provider defaults: `python chat.py --agent provider`
+  - Anomalies defaults: `python chat.py --agent anomalies`
+  - Generic agent prompts you to select which tables/slugs to enable (or choose ALL) before the session starts
+  - Allow manual SQL via `--allow-query-table` (disabled by default)
+
+### Web UI (ChatKit)
+
+See `../ds-chat/README.md` for a lightweight ChatKit-based web interface that
+lets you pick tables from the browser and talk to the generic agent using
+OpenAI's ChatKit embeds.
 
 Docker
 - Build once: `docker compose build`
