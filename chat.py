@@ -37,66 +37,30 @@ for _path in LOCAL_IMPORT_PATHS:
 
 from agents import Runner
 from agents.mcp import MCPServerStdio, create_static_tool_filter
-from ds_agents.mcp_agents import (
-    GenericDatabaseMCPAgent,
-    MarketAnomaliesMCPAgent,
-    ProviderAuditMCPAgent,
-)
-from ds_mcp.tables import get_table, list_available_tables
+from ds_agents.mcp_agents import GenericDatabaseMCPAgent
 
 
 AGENT_CLASSES = {
-    "provider": ProviderAuditMCPAgent,
-    "anomalies": MarketAnomaliesMCPAgent,
     "generic": GenericDatabaseMCPAgent,
 }
 
-TABLE_PROFILES = {
-    "provider": ["provider"],
-    "anomalies": ["anomalies"],
-}
-
-
-def _summarize_tables(table_ids: list[str]) -> list[dict[str, Any]]:
-    summaries: list[dict[str, Any]] = []
-    for identifier in table_ids:
-        table = get_table(identifier)
-        summaries.append(
-            {
-                "identifier": identifier,
-                "full_name": table.full_name,
-                "custom_tools": [spec.name for spec in table.custom_tools],
-                "query_aliases": list(table.query_aliases),
-            }
-        )
-    return summaries
-
 
 async def chat(agent_kind: str, tables: list[str], allow_query_table: bool, server_label: str | None = None) -> int:
-    # Resolve agent + MCP stdio script + default macro tools
+    # Resolve agent + MCP stdio script
     agent_cls = AGENT_CLASSES.get(agent_kind)
     if not agent_cls:
         raise ValueError(f"Unknown agent kind: {agent_kind}")
 
     # Pull defaults from the agent class
     agent_oop = agent_cls()
-    table_summaries = _summarize_tables(tables)
     print("Configured tables:")
-    for summary in table_summaries:
-        print(f"- {summary['identifier']} → {summary['full_name']}")
-        base = ["describe_table", "get_table_schema", "read_table_head"]
-        print(f"  Base tools: {', '.join(base)}")
-        if summary["custom_tools"]:
-            print(f"  Custom tools: {', '.join(summary['custom_tools'])}")
-        if summary["query_aliases"]:
-            print(f"  Query aliases: {', '.join(summary['query_aliases'])}")
+    for table in tables:
+        print(f"- {table}")
     print()
 
     allowed_tools = agent_oop.allowed_tool_names()
     if not allow_query_table:
         disallowed = {"query_table"}
-        for summary in table_summaries:
-            disallowed.update(summary["query_aliases"])
         allowed_tools = [tool for tool in allowed_tools if tool not in disallowed]
     server_name = server_label or agent_oop.get_server_name()
 
@@ -186,41 +150,23 @@ async def chat(agent_kind: str, tables: list[str], allow_query_table: bool, serv
     return 0
 
 
-def _prompt_generic_tables() -> list[str]:
-    available = list_available_tables()
-    if not available:
-        print("No tables discovered. Enter at least one identifier (schema.table).")
-    for idx, (slug, display) in enumerate(available, start=1):
-        print(f"[{idx}] {slug} – {display}")
-    print("[A] Add custom table identifier (schema.table or database.schema.table)")
-    print("[ALL] Enable all listed tables")
+def _prompt_table_identifiers() -> list[str]:
+    """Prompt user to enter table identifiers (schema.table or database.schema.table)."""
+    print("Enter table identifiers (schema.table or database.schema.table).")
     print("Press Enter with no input when done.")
 
     selections: list[str] = []
-    slug_lookup = {str(i + 1): slug for i, (slug, _) in enumerate(available)}
 
     while True:
-        choice = input("Select option: ").strip()
-        if not choice:
+        identifier = input("Table identifier: ").strip()
+        if not identifier:
             break
-        upper = choice.upper()
-        if upper == "ALL":
-            selections = [slug for slug, _ in available]
-            break
-        if upper == "A":
-            identifier = input("Enter schema.table (or database.schema.table): ").strip()
-            if identifier:
-                selections.append(identifier)
-            continue
-        slug = slug_lookup.get(choice)
-        if slug:
-            selections.append(slug)
-            continue
-        print("Unrecognized option. Try again.")
+        selections.append(identifier)
 
     if not selections:
-        print("No explicit selection made; defaulting to all discovered tables.")
-        selections = [slug for slug, _ in available]
+        print("No tables specified. Exiting.")
+        raise SystemExit(1)
+
     deduped: list[str] = []
     seen: set[str] = set()
     for item in selections:
@@ -231,23 +177,16 @@ def _prompt_generic_tables() -> list[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Interactive chat for DS-MCP tables (schema/head/query tools built-in)")
-    parser.add_argument("--agent", choices=list(AGENT_CLASSES.keys()), default="provider", help="Which agent instructions to use")
+    parser = argparse.ArgumentParser(description="Interactive chat for DS-MCP database exploration")
     parser.add_argument(
         "--allow-query-table",
         action="store_true",
-        help="Permit direct query_table()/query_* aliases (off by default)",
+        help="Permit direct query_table() (off by default)",
     )
     args = parser.parse_args()
 
-    if args.agent == "generic":
-        tables = _prompt_generic_tables()
-    else:
-        tables = list(TABLE_PROFILES.get(args.agent, ()))
-        if not tables:
-            parser.error("No tables configured for this agent. Update TABLE_PROFILES in chat.py.")
-
-    return asyncio.run(chat(args.agent, tables, args.allow_query_table))
+    tables = _prompt_table_identifiers()
+    return asyncio.run(chat("generic", tables, args.allow_query_table))
 
 
 if __name__ == "__main__":
