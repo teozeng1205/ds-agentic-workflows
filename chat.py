@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Interactive chat interface for DS-MCP tables.
+Interactive chat interface for database exploration using GenericDatabaseMCPAgent.
 
-Every table automatically exposes describe_table(), get_table_schema(),
-read_table_head(), and query_table(), plus any bespoke SQL helpers (e.g.,
-provider macros). Use --table to point at any slug or schema.table string and
-pick the agent instructions that fit your workflow.
+Exposes 4 tools for exploring database tables:
+  - describe_table: Get metadata and key columns
+  - get_table_schema: Get full column information
+  - read_table_head: Get data preview (first N rows)
+  - query_table: Execute SELECT queries (optional, off by default)
 
 Type '/exit' to quit.
 """
@@ -19,7 +20,6 @@ import sys
 import time
 from collections import Counter
 from pathlib import Path
-from typing import Any
 
 # Ensure local submodules are importable without pip installs
 REPO_ROOT = Path(__file__).resolve().parent
@@ -39,32 +39,32 @@ from agents import Runner
 from agents.mcp import MCPServerStdio, create_static_tool_filter
 from ds_agents.mcp_agents import GenericDatabaseMCPAgent
 
+# Core tools exposed to the agent
+EXPOSED_TOOLS = [
+    "describe_table",
+    "get_table_schema",
+    "read_table_head",
+    "query_table",
+]
 
-AGENT_CLASSES = {
-    "generic": GenericDatabaseMCPAgent,
-}
 
+async def chat(tables: list[str], allow_query_table: bool) -> int:
+    """Run interactive chat with GenericDatabaseMCPAgent."""
+    agent = GenericDatabaseMCPAgent()
 
-async def chat(agent_kind: str, tables: list[str], allow_query_table: bool, server_label: str | None = None) -> int:
-    # Resolve agent + MCP stdio script
-    agent_cls = AGENT_CLASSES.get(agent_kind)
-    if not agent_cls:
-        raise ValueError(f"Unknown agent kind: {agent_kind}")
-
-    # Pull defaults from the agent class
-    agent_oop = agent_cls()
     print("Configured tables:")
     for table in tables:
         print(f"- {table}")
     print()
 
-    allowed_tools = agent_oop.allowed_tool_names()
+    # Determine allowed tools
+    allowed_tools = list(EXPOSED_TOOLS)
     if not allow_query_table:
-        disallowed = {"query_table"}
-        allowed_tools = [tool for tool in allowed_tools if tool not in disallowed]
-    server_name = server_label or agent_oop.get_server_name()
+        allowed_tools = [tool for tool in allowed_tools if tool != "query_table"]
 
-    print(f"Starting MCP server for {agent_kind} …", file=sys.stderr)
+    server_name = agent.get_server_name()
+
+    print(f"Starting MCP server …", file=sys.stderr)
     # Ensure the MCP server uses the same Python interpreter and env as this process
     server_env = os.environ.copy()
     pythonpath_entries = list(LOCAL_IMPORT_PATH_STRS)
@@ -86,10 +86,8 @@ async def chat(agent_kind: str, tables: list[str], allow_query_table: bool, serv
         client_session_timeout_seconds=180.0,
         tool_filter=create_static_tool_filter(allowed_tool_names=allowed_tools),
     ) as server:
-        agent = agent_oop.build(server)
+        agent_instance = agent.build(server)
 
-        # Manual conversation management using to_input_list()
-        # See: docs/running_agents.md → Manual conversation management
         conversation_items = None  # type: list | None
 
         print("Chat ready. Type /exit to quit.\n")
@@ -110,12 +108,11 @@ async def chat(agent_kind: str, tables: list[str], allow_query_table: bool, serv
             if conversation_items is None:
                 input_payload = user
             else:
-                # Append user message to prior items
                 input_payload = list(conversation_items)
                 input_payload.append({"role": "user", "content": user})
 
             t0 = time.perf_counter()
-            result = await Runner.run(agent, input=input_payload)
+            result = await Runner.run(agent_instance, input=input_payload)
             dt = time.perf_counter() - t0
 
             # Print final output
@@ -177,16 +174,19 @@ def _prompt_table_identifiers() -> list[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Interactive chat for DS-MCP database exploration")
+    parser = argparse.ArgumentParser(
+        description="Interactive database exploration chat",
+        epilog="Tools: describe_table, get_table_schema, read_table_head, query_table (opt)",
+    )
     parser.add_argument(
         "--allow-query-table",
         action="store_true",
-        help="Permit direct query_table() (off by default)",
+        help="Allow direct SQL queries via query_table() (default: disabled for safety)",
     )
     args = parser.parse_args()
 
     tables = _prompt_table_identifiers()
-    return asyncio.run(chat("generic", tables, args.allow_query_table))
+    return asyncio.run(chat(tables, args.allow_query_table))
 
 
 if __name__ == "__main__":
