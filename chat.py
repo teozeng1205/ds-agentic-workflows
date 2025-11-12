@@ -45,6 +45,8 @@ EXPOSED_TOOLS = [
     "get_table_schema",
     "read_table_head",
     "query_table",
+    "get_top_site_issues",
+    "analyze_issue_scope",
 ]
 
 
