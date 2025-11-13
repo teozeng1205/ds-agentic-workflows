@@ -42,6 +42,12 @@ EXPOSED_TOOLS = [
     "analyze_issue_scope",
 ]
 
+# Common tables to expose to the agent (configurable)
+COMMON_TABLES = [
+    "prod.monitoring.provider_combined_audit",
+    "local.analytics.market_level_anomalies_v3",
+]
+
 
 async def chat() -> int:
     """Run interactive chat with GenericDatabaseMCPAgent."""
@@ -61,6 +67,8 @@ async def chat() -> int:
     server_args = ["-m", "ds_mcp.server"]
     if server_name:
         server_args.extend(["--name", server_name])
+    for table in COMMON_TABLES:
+        server_args.extend(["--table", table])
 
     try:
         async with MCPServerStdio(
