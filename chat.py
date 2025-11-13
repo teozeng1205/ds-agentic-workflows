@@ -34,8 +34,8 @@ from ds_agents.mcp_agents import GenericDatabaseMCPAgent
 
 # Core tools exposed to the agent
 EXPOSED_TOOLS = [
-    "describe_table",
-    "get_table_schema",
+#  "describe_table",
+#  "get_table_schema",
     "read_table_head",
     "query_table",
     "get_top_site_issues",
