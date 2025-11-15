@@ -1,33 +1,70 @@
 # ds-agentic-workflows
 
-Minimal steps to run the interactive chat client that talks to the MCP servers (Provider Combined Audit or Market Anomalies).
+Local development harness for the GenericDatabaseMCPAgent used by our analytics chat experiences.  
+The repository bundles a CLI, the shared agent execution engine, and the MCP server + agent packages so you can test conversational workflows end-to-end without extra glue code.
 
-Quick start
-- Ensure submodules are present: `git submodule update --init --recursive`
-- Create venv and activate: `python3 -m venv .venv && source .venv/bin/activate`
-- Install base agents lib: `pip install -U openai-agents`
-- Install shared dependencies: `pip install -r ds-mcp/requirements.txt`
-- Install the internal ds-threevictors package (required for database access): `pip install -e ds-threevictors` or use your internal package index.
-- Create `env.sh` at repo root with at least: `AWS_PROFILE`, `AWS_DEFAULT_REGION`, `OPENAI_API_KEY` (see `ds-mcp/README.md`)
-- Run chat
-  - Provider defaults: `python chat.py --agent provider`
-  - Anomalies defaults: `python chat.py --agent anomalies`
-  - Generic agent prompts you to select which tables/slugs to enable (or choose ALL) before the session starts
-  - Allow manual SQL via `--allow-query-table` (disabled by default)
+## Contents
 
-### Web UI (ChatKit)
+- `chat.py` – interactive CLI that speaks to the GenericDatabaseMCPAgent.
+- `agent_core.py` – shared async executor used by both the CLI and the ds-chat FastAPI backend.
+- `ds-agents/` – Python package with provider/anomalies agent definitions and wrappers.
+- `ds-mcp/` – Model Context Protocol (MCP) server exposing Redshift analytics tables as tools.
+- `env.sh` – template for AWS/OpenAI environment variables (source before running anything).
 
-See `../ds-chat/README.md` for a lightweight ChatKit-based web interface that
-lets you pick tables from the browser and talk to the generic agent using
-OpenAI's ChatKit embeds.
+## Requirements
 
-Docker
-- Build once: `docker compose build`
-- Provider chat: `OPENAI_API_KEY=sk-... docker compose run --rm chat`
-- Other agent: `OPENAI_API_KEY=sk-... CHAT_AGENT=anomalies docker compose run --rm chat`
+- Python 3.10+ (3.12 recommended)
+- Access to the ATPCO Redshift reader via VPN + AWS SSO (e.g., `3VDEV` profile)
+- OpenAI API key for `openai-agents`
+- `ds-threevictors` package (internal) for AnalyticsReader connectivity
 
-Notes
-- `chat.py` is at the repo root and loads agent definitions from `ds-agents/agents/`.
-- Python import names use underscores: `from ds_agents import ...` and `from ds_mcp import ...`.
-- Running `chat.py` from the repo root automatically adds the local `ds-agents` and `ds-mcp/src` paths to `sys.path`, so editable installs (`pip install -e`) are optional.
-- The chat client launches the installed `ds_mcp` server modules directly (no repo paths).
+## Setup
+
+```bash
+git clone --recurse-submodules <repo>
+cd ds-agentic-workflows
+
+python3 -m venv .venv
+source .venv/bin/activate
+
+pip install -U openai-agents
+pip install -r ds-mcp/requirements.txt
+pip install -e ds-threevictors  # from your internal index
+
+cp env.sh env.local && source env.local   # ensure AWS_* and OPENAI_API_KEY are set
+```
+
+Running from the repo root automatically injects `ds-agents/` and `ds-mcp/src/` into `PYTHONPATH`, so editable installs are optional.
+
+## Usage
+
+### CLI
+
+```bash
+python chat.py              # Generic database agent
+# Once running:
+#  • Type questions about prod.monitoring or local.analytics tables
+#  • Use /exit to quit
+```
+
+Pass `--allow-query-table` to enable ad-hoc SQL or set `COMMON_TABLES`/`EXPOSED_TOOLS` in `agent_core.py` to tailor access.
+
+### Web Backends
+
+`agent_core.AgentExecutor` is the shared engine used by the ds-chat FastAPI backend. Import it to embed the same conversational agent into other applications without reimplementing MCP lifecycle handling.
+
+## Docker
+
+```bash
+docker compose build
+OPENAI_API_KEY=sk-... docker compose run --rm chat                  # Provider defaults
+OPENAI_API_KEY=sk-... CHAT_AGENT=anomalies docker compose run --rm chat
+```
+
+The container mounts `env.sh` and `~/.aws` so the MCP subprocess inherits the correct credentials.
+
+## Troubleshooting
+
+- **Timeouts initializing MCP server** – verify VPN + AWS SSO session (`aws sso login --profile 3VDEV`).
+- **Missing dependencies** – ensure `pip install -r ds-mcp/requirements.txt` and `pip install -U openai-agents` succeeded inside your virtual environment.
+- **Import errors** – run commands from the repo root so the relative `sys.path` adjustments in `agent_core.py` take effect.
